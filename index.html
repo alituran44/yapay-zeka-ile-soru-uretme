@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>SoruAI — Akıllı Soru Üretici</title>
+  <link rel="stylesheet" href="style.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet"/>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+  <!-- HEADER -->
+  <header class="header">
+    <div class="logo">
+      <span class="logo-icon">⚡</span>
+      <span class="logo-text">Soru<span class="logo-accent">AI</span></span>
+    </div>
+    <nav class="nav">
+      <button class="nav-btn active" onclick="showSection('generator')">Soru Üret</button>
+      <button class="nav-btn" onclick="showSection('saved')">Kayıtlı Sorular</button>
+      <button class="nav-btn" onclick="showSection('settings')">Ayarlar</button>
+    </nav>
+    <div class="header-badge">Türkiye Sınav Sistemi</div>
+  </header>
+
+  <!-- HERO -->
+  <section class="hero" id="hero">
+    <div class="hero-bg"></div>
+    <div class="hero-content">
+      <div class="hero-tag">🚀 LGS · TYT · AYT · KPSS · ALES · DGS</div>
+      <h1 class="hero-title">Tam Kapsamlı<br/><span class="gradient-text">Deneme Sınavı Merkezi</span></h1>
+      <p class="hero-sub">Resmi sınav müfredatına ve soru sayılarına %100 uyumlu tam kitapçıklar</p>
+    </div>
+    <div class="hero-stats">
+      <div class="stat"><span class="stat-num">Batch</span><span class="stat-lbl">Hızlı Üretim</span></div>
+      <div class="stat-divider"></div>
+      <div class="stat"><span class="stat-num">Yeni Nesil</span><span class="stat-lbl">Beceri Temelli</span></div>
+      <div class="stat-divider"></div>
+      <div class="stat"><span class="stat-num">%100</span><span class="stat-lbl">Hata Payı Sıfır</span></div>
+    </div>
+  </section>
+
+  <!-- MAIN CONTENT -->
+  <main class="main">
+
+    <!-- GENERATOR SECTION -->
+    <section id="section-generator" class="section active">
+      <div class="generator-layout">
+
+        <!-- LEFT: FORM -->
+        <div class="form-panel glass-card">
+          <h2 class="panel-title">📝 Deneme Sınavı Hazırla</h2>
+
+          <!-- SINAV SEÇİMİ -->
+          <div class="form-group">
+            <label class="form-label">Sınav Türü</label>
+            <div class="chip-grid" id="examChips">
+              <button class="chip active" data-value="TYT" onclick="selectChip(this,'exam')">TYT</button>
+              <button class="chip" data-value="AYT_SAY" onclick="selectChip(this,'exam')">AYT Sayısal</button>
+              <button class="chip" data-value="LGS" onclick="selectChip(this,'exam')">LGS</button>
+              <button class="chip" data-value="KPSS" onclick="selectChip(this,'exam')">KPSS</button>
+              <button class="chip" data-value="DGS" onclick="selectChip(this,'exam')">DGS</button>
+              <button class="chip" data-value="ALES" onclick="selectChip(this,'exam')">ALES</button>
+            </div>
+          </div>
+
+          <!-- SEÇENEK SAYISI -->
+          <div class="form-group">
+            <label class="form-label">Seçenek Sayısı</label>
+            <div class="chip-grid">
+              <button class="chip active" data-value="4" onclick="selectChip(this,'opts')">4 Seçenekli (A-D)</button>
+              <button class="chip" data-value="5" onclick="selectChip(this,'opts')">5 Seçenekli (A-E)</button>
+            </div>
+          </div>
+
+          <!-- ZORLUK -->
+          <div class="form-group">
+            <label class="form-label">Soru Zorluğu</label>
+            <div class="chip-grid" id="diffChips">
+              <button class="chip chip-med active" data-value="Orta" onclick="selectChip(this,'diff')">🎯 Standart</button>
+              <button class="chip chip-osym" data-value="ÖSYM Tarzı" onclick="selectChip(this,'diff')">⚡ Yeni Nesil / Beceri Temelli</button>
+            </div>
+          </div>
+
+          <!-- GÖRSEL -->
+          <div class="form-group">
+            <label class="form-label">Görsel / Şekil Desteği</label>
+            <div class="toggle-row">
+              <label class="toggle">
+                <input type="checkbox" id="gorselToggle" checked />
+                <span class="toggle-slider"></span>
+              </label>
+              <span class="toggle-label">Gerekli sorularda görsel üret (Matematik/Fen vb.)</span>
+            </div>
+          </div>
+
+          <!-- API KEY -->
+          <div class="form-group">
+            <label class="form-label">🔑 Gemini API Anahtarı</label>
+            <div class="api-group">
+              <div class="api-input-wrapper">
+                <input type="password" class="form-input" id="apiKey" placeholder="AIzaSy..." />
+                <button class="btn-toggle" onclick="togglePass('apiKey')">👁️</button>
+              </div>
+              <button class="btn-save-key" onclick="saveKey()">Kaydet</button>
+            </div>
+          </div>
+
+          <!-- GENERATE BUTTON -->
+          <button class="btn-generate" id="generateBtn" onclick="generateDeneme()">
+            <span class="btn-icon">📚</span>
+            <span>Deneme Sınavını Oluştur</span>
+          </button>
+          
+          <button class="btn-secondary" style="margin-top:10px; width:100%;" onclick="testApiStatus()">
+            🔍 API Durumunu Kontrol Et
+          </button>
+
+          <p class="form-hint" style="margin-top:15px; color:var(--text3); font-size:12px;">
+            * Deneme sınavı resmi soru sayılarına göre bölümler halinde üretilecektir. Bu işlem 1-2 dakika sürebilir.
+          </p>
+          <p id="versionTag" style="color:var(--text3); font-size:10px; text-align:center; margin-top:20px;">SoruAI Sürüm: v1.6 (Yeni Güvenli Sürüm)</p>
+        </div>
+
+        <!-- RIGHT: OUTPUT -->
+        <div class="output-panel" id="outputPanel">
+          <div class="empty-state" id="emptyState">
+            <div class="empty-icon">📚</div>
+            <p>Parametrelerini gir ve soruları üret!</p>
+            <p class="empty-sub">Yapay zeka sınav formatına uygun,<br/>yeni nesil sorularını hazırlayacak.</p>
+          </div>
+          <div id="loadingState" class="loading-state hidden">
+            <div class="spinner"></div>
+            <p class="loading-text">Sorular hazırlanıyor...</p>
+            <p class="loading-sub" id="loadingStep">Gemini API'ye bağlanıyor</p>
+          </div>
+          <div id="questionsOutput" class="questions-output hidden"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SAVED QUESTIONS -->
+    <section id="section-saved" class="section">
+      <div class="saved-header">
+        <h2>📁 Kayıtlı Sorular</h2>
+        <button class="btn-secondary" onclick="clearSaved()">Tümünü Sil</button>
+      </div>
+      <div id="savedList" class="saved-list"></div>
+    </section>
+
+    <!-- SETTINGS -->
+    <section id="section-settings" class="section">
+      <div class="settings-card glass-card">
+        <h2>⚙️ Ayarlar</h2>
+        <div class="form-group">
+          <label class="form-label">Gemini API Anahtarı</label>
+          <div class="api-input-row">
+            <input type="password" class="form-input" id="apiKeySettings" placeholder="AIzaSy..." />
+            <button class="btn-save-key" onclick="saveKeyFromSettings()">Kaydet</button>
+          </div>
+          <p class="form-hint"><a href="https://aistudio.google.com/app/apikey" target="_blank">Google AI Studio</a>'dan ücretsiz alın</p>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Varsayılan Zorluk</label>
+          <select class="form-select" id="defaultDiff">
+            <option>Kolay</option><option selected>Orta</option><option>Zor</option><option>ÖSYM Tarzı</option>
+          </select>
+        </div>
+        <div class="settings-info">
+          <p>🔒 API anahtarınız sadece tarayıcınızda saklanır, hiçbir sunucuya gönderilmez.</p>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="footer">
+    <p>SoruAI © 2025 · Türkiye Sınav Sistemi (ÖSYM · MEB) · Yapay Zeka Destekli</p>
+  </footer>
+
+  <script src="app_v16.js"></script>
+</body>
+</html>
