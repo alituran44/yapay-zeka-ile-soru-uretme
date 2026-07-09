@@ -640,3 +640,33 @@ function deleteSaved(idx) {
   renderSaved();
   showToast('🗑️ Soru silindi.');
 }
+
+function clearSaved() {
+  state.saved = [];
+  localStorage.setItem('soruai_saved', '[]');
+  const savedList = document.getElementById('savedList');
+  if (savedList) savedList.innerHTML = '';
+  showToast('🗑️ Kayıtlı sorular temizlendi');
+}
+
+function showError(msg) {
+  const output = document.getElementById('questionsOutput');
+  if (output) {
+    output.classList.remove('hidden');
+    const emptyState = document.getElementById('emptyState');
+    if (emptyState) emptyState.classList.add('hidden');
+    output.innerHTML = `<div class="error-box">❌ ${escHtml(msg)}</div>`;
+  }
+}
+
+function showToast(msg) {
+  const t = document.createElement('div');
+  t.className = 'toast';
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 3000);
+}
+
+function escHtml(s) {
+  return s ? String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') : '';
+}
