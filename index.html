@@ -7,6 +7,9 @@
   <link rel="stylesheet" href="style.css" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet"/>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- pdf.js and tesseract.js for ocr and reference files -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/4.1.1/tesseract.min.js"></script>
 </head>
 <body>
   <!-- HEADER -->
@@ -31,13 +34,13 @@
       <div class="hero-content-left">
         <div class="hero-tag">🚀 LGS · TYT · AYT · KPSS · ALES · DGS</div>
         <h1 class="hero-title">Tam Kapsamlı<br/><span class="gradient-text">Deneme Sınavı Merkezi</span></h1>
-        <p class="hero-sub">Resmi sınav müfredatına ve soru sayılarına %100 uyumlu tam kitapçıklar</p>
+        <p class="hero-sub">Gerçek grafik/şekil destekli, çok adımlı düşünmeyi gerektiren sorular</p>
         <div class="hero-stats">
           <div class="stat"><span class="stat-num">Batch</span><span class="stat-lbl">Hızlı Üretim</span></div>
           <div class="stat-divider"></div>
-          <div class="stat"><span class="stat-num">Yeni Nesil</span><span class="stat-lbl">Beceri Temelli</span></div>
+          <div class="stat"><span class="stat-num">Gerçek</span><span class="stat-lbl">Grafik & Şekil</span></div>
           <div class="stat-divider"></div>
-          <div class="stat"><span class="stat-num">%100</span><span class="stat-lbl">Hata Payı Sıfır</span></div>
+          <div class="stat"><span class="stat-num">4 Kademe</span><span class="stat-lbl">Zorluk Seviyesi</span></div>
         </div>
       </div>
       <!-- Right Column: Banner Carousel -->
@@ -91,9 +94,12 @@
           <div class="form-group">
             <label class="form-label">Soru Zorluğu</label>
             <div class="chip-grid" id="diffChips">
-              <button class="chip chip-med active" data-value="Orta" onclick="selectChip(this,'diff')">🎯 Standart</button>
-              <button class="chip chip-osym" data-value="ÖSYM Tarzı" onclick="selectChip(this,'diff')">⚡ Yeni Nesil / Beceri Temelli</button>
+              <button class="chip chip-easy" data-value="Kolay" onclick="selectChip(this,'diff')">🟢 Kolay</button>
+              <button class="chip chip-med active" data-value="Orta" onclick="selectChip(this,'diff')">🟡 Orta</button>
+              <button class="chip chip-hard" data-value="Zor" onclick="selectChip(this,'diff')">🔴 Zor</button>
+              <button class="chip chip-osym" data-value="Yeni Nesil" onclick="selectChip(this,'diff')">⚡ Yeni Nesil / Beceri Temelli</button>
             </div>
+            <p class="diff-hint" id="diffHint">Orta: iki kavramın birleştiği, kısa senaryolu, tek adımda çözülemeyen sorular.</p>
           </div>
 
           <!-- GÖRSEL -->
@@ -107,6 +113,8 @@
               <span class="toggle-label">Gerekli sorularda görsel üret (Matematik/Fen vb.)</span>
             </div>
           </div>
+
+          <!-- GÖRSEL TÜRÜ -->
           <div class="form-group">
             <label class="form-label">Görsel Türü</label>
             <select class="form-select" id="visualType">
@@ -119,12 +127,13 @@
             </select>
           </div>
 
+          <!-- REFERANS SORULAR -->
           <div class="form-group">
             <label class="form-label">📌 Referans Sorular / Metin</label>
             <textarea id="referenceText" class="form-textarea" rows="6" placeholder="Örnek soru metinlerini buraya yapıştırın ya da PDF/fotoğraf ekleyin. Bunlara benzer, özgün yeni sorular üretilecektir."></textarea>
             <input type="file" id="referenceFiles" class="form-input" accept=".pdf,.png,.jpg,.jpeg,.webp,.txt,.md" multiple />
             <div id="referenceFilesList" style="margin-top: 8px; display: flex; flex-wrap: wrap; gap: 8px;"></div>
-            <p class="form-hint">PDF, fotoğraf veya metin dosyası ekleyin. Eklenen içerik otomatik olarak soru üretim promptuna dahil edilir.</p>
+            <p class="form-hint">PDF, fotoğraf veya metin dosyası ekleyin. Eklenen içerik doğrudan yapay zeka analizine dahil edilir.</p>
           </div>
 
           <!-- API KEY -->
@@ -144,7 +153,7 @@
             <span class="btn-icon">📚</span>
             <span>Deneme Sınavını Oluştur</span>
           </button>
-          
+
           <button class="btn-secondary" style="margin-top:10px; width:100%;" onclick="testApiStatus()">
             🔍 API Durumunu Kontrol Et
           </button>
@@ -152,7 +161,7 @@
           <p class="form-hint" style="margin-top:15px; color:var(--text3); font-size:12px;">
             * Deneme sınavı resmi soru sayılarına göre bölümler halinde üretilecektir. Bu işlem 1-2 dakika sürebilir.
           </p>
-          <p id="versionTag" style="color:var(--text3); font-size:10px; text-align:center; margin-top:20px;">SoruAI Sürüm: v1.6 (Yeni Güvenli Sürüm)</p>
+          <p id="versionTag" style="color:var(--text3); font-size:10px; text-align:center; margin-top:20px;">SoruAI Sürüm: v2.0 (Görsel + Zorluk Güncellemesi)</p>
         </div>
 
         <!-- RIGHT: OUTPUT -->
@@ -199,7 +208,7 @@
         <div class="form-group">
           <label class="form-label">Varsayılan Zorluk</label>
           <select class="form-select" id="defaultDiff">
-            <option>Kolay</option><option selected>Orta</option><option>Zor</option><option>ÖSYM Tarzı</option>
+            <option>Kolay</option><option selected>Orta</option><option>Zor</option><option>Yeni Nesil</option>
           </select>
         </div>
         <div class="settings-info">
@@ -245,13 +254,6 @@
     <p>SoruAI © 2025 · Türkiye Sınav Sistemi (ÖSYM · MEB) · Yapay Zeka Destekli</p>
   </footer>
 
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
-  <script src="config.js"></script>
-  <script src="utils.js"></script>
-  <script src="api.js"></script>
-  <script src="ocr.js"></script>
-  <script src="ui.js"></script>
-  <script src="app_v16.js"></script>
+  <script src="app.js"></script>
 </body>
 </html>
