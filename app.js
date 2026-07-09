@@ -1,9 +1,7 @@
 // ─── MODEL LİSTESİ ───
 const GEMINI_MODELS = [
-  { name: 'gemini-flash-latest',     ver: 'v1beta' },
-  { name: 'gemini-pro-latest',      ver: 'v1beta' },
-  { name: 'gemini-1.5-flash-latest', ver: 'v1beta' },
-  { name: 'gemini-1.5-pro-latest',   ver: 'v1beta' },
+  { name: 'gemini-1.5-flash', ver: 'v1beta' },
+  { name: 'gemini-1.5-pro',   ver: 'v1beta' }
 ];
 
 // ─── SINAV KONFIGURASYONLARI (Resmi Soru Sayıları) ───
