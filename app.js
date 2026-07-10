@@ -1,7 +1,9 @@
 // ─── MODEL LİSTESİ ───
 const GEMINI_MODELS = [
-  { name: 'gemini-1.5-flash', ver: 'v1beta' },
-  { name: 'gemini-1.5-pro',   ver: 'v1beta' }
+  { name: 'gemini-2.5-flash',       ver: 'v1beta' },
+  { name: 'gemini-2.0-flash',       ver: 'v1beta' },
+  { name: 'gemini-1.5-flash',       ver: 'v1beta' },
+  { name: 'gemini-1.5-pro',         ver: 'v1beta' }
 ];
 
 // ─── SINAV KONFIGURASYONLARI (Resmi Soru Sayıları) ───
@@ -155,19 +157,39 @@ const state = {
   diff: 'Orta',
   opts: '4',
   count: 3,
+  visualType: 'auto',
   kazanimlar: [],
   questions: [],
   saved: JSON.parse(localStorage.getItem('soruai_saved') || '[]'),
+  referenceImages: [], // Multimodal referans resimleri
   mode: 'manual',
-  charts: [] // Chart.js örneklerini takip et (temizlemek için)
+  charts: [],
+  activeModelObj: JSON.parse(localStorage.getItem('soruai_active_model') || 'null')
 };
 
 // ─── INIT ───
 document.addEventListener('DOMContentLoaded', () => {
   const savedKey = localStorage.getItem('soruai_key');
   if (savedKey) {
-    document.getElementById('apiKey').value = savedKey;
+    const apiKeyEl = document.getElementById('apiKey');
+    if (apiKeyEl) apiKeyEl.value = savedKey;
+    const settingsKey = document.getElementById('apiKeySettings');
+    if (settingsKey) settingsKey.value = savedKey;
   }
+
+  const referenceFilesInput = document.getElementById('referenceFiles');
+  if (referenceFilesInput) {
+    referenceFilesInput.addEventListener('change', async (event) => {
+      const files = Array.from(event.target.files || []);
+      if (!files.length) return;
+      const extracted = await processReferenceFiles(files);
+      if (extracted) {
+        showToast('✅ Referans dosyalar işlenip prompta eklendi');
+      }
+    });
+  }
+
+  renderSaved();
   updateDiffHint();
 });
 
@@ -225,14 +247,23 @@ function togglePass(id) {
 
 // ─── DENEME ÜRETİMİ ───
 async function generateDeneme() {
-  const apiKey = document.getElementById('apiKey').value.trim() || localStorage.getItem('soruai_key');
+  const apiKeyEl = document.getElementById('apiKey');
+  const apiKey = (apiKeyEl ? apiKeyEl.value.trim() : '') || localStorage.getItem('soruai_key');
   if (!apiKey) { showToast('⚠️ Lütfen Gemini API anahtarını girin', 'warn'); return; }
 
   const config = SINAV_CONFIG[state.exam];
   if (!config) { showToast('⚠️ Sınav konfigürasyonu bulunamadı', 'error'); return; }
 
-  const gorsel = document.getElementById('gorselToggle').checked;
+  const gorselEl = document.getElementById('gorselToggle');
+  const gorsel = gorselEl ? gorselEl.checked : false;
+  
+  const visualTypeEl = document.getElementById('visualType');
+  const visualType = (visualTypeEl ? visualTypeEl.value : '') || state.visualType || 'auto';
+  
   const optCount = state.opts;
+  
+  const referenceTextEl = document.getElementById('referenceText');
+  const referenceText = referenceTextEl ? referenceTextEl.value.trim() : '';
 
   state.questions = [];
   destroyAllCharts();
@@ -240,20 +271,48 @@ async function generateDeneme() {
 
   try {
     for (const [index, bolum] of config.bolumler.entries()) {
-      const stepMsg = `[${index + 1}/${config.bolumler.length}] ${bolum.ders} bölümü üretiliyor (${bolum.count} Soru)...`;
-      setLoadingStep(stepMsg);
+      const totalQuestionsNeeded = bolum.count;
+      const batchSize = 20;
+      let questionsGeneratedForBolum = 0;
+      let bolumQuestions = [];
+      let attempts = 0;
 
-      const prompt = buildExamPrompt(state.exam, bolum.ders, bolum.count, optCount, state.diff, gorsel);
-      const raw = await callGemini(apiKey, prompt);
-      const bolumQuestions = parseQuestions(raw);
+      while (questionsGeneratedForBolum < totalQuestionsNeeded && attempts < 5) {
+        const currentBatchSize = Math.min(batchSize, totalQuestionsNeeded - questionsGeneratedForBolum);
+        const stepMsg = `[${index + 1}/${config.bolumler.length}] ${bolum.ders} üretiliyor (Soru ${questionsGeneratedForBolum + 1}-${questionsGeneratedForBolum + currentBatchSize} / ${totalQuestionsNeeded})...`;
+        setLoadingStep(stepMsg);
 
-      bolumQuestions.forEach(q => {
-        q.bolumName = bolum.ders;
-        q.examType = state.exam;
-      });
+        const prompt = buildExamPrompt(state.exam, bolum.ders, currentBatchSize, optCount, state.diff, gorsel, visualType, questionsGeneratedForBolum, referenceText);
+
+        if (questionsGeneratedForBolum > 0 || index > 0) {
+          await sleep(2000);
+        }
+
+        const raw = await callGemini(apiKey, prompt, state.referenceImages);
+        const batchQuestions = parseQuestions(raw);
+
+        if (batchQuestions.length === 0) {
+          attempts++;
+          showToast(`⚠️ Bölümün bir parçası alınamadı, tekrar deneniyor (${attempts}/5)...`, 'warn');
+          continue;
+        }
+
+        batchQuestions.forEach((q, idx) => {
+          q.id = Date.now() + '_' + index + '_' + questionsGeneratedForBolum + '_' + idx;
+          q.bolumName = bolum.ders;
+          q.examType = state.exam;
+          bolumQuestions.push(q);
+        });
+
+        questionsGeneratedForBolum += batchQuestions.length;
+      }
+
+      if (bolumQuestions.length === 0) {
+        throw new Error(`${bolum.ders} bölümü üretilemedi (JSON okunamadı veya API yanıt vermedi).`);
+      }
 
       state.questions = [...state.questions, ...bolumQuestions];
-      showToast(`✅ ${bolum.ders} tamamlandı`);
+      showToast(`✅ ${bolum.ders} tamamlandı (${bolumQuestions.length} soru)`);
     }
 
     setLoadingStep('Deneme sınavı kitapçığı oluşturuluyor...');
@@ -270,117 +329,230 @@ async function generateDeneme() {
 }
 
 // ─── PROMPT BUILDER (Deneme Özel) ───
-function buildExamPrompt(exam, ders, count, optCount, zorluk, gorsel) {
+function buildExamPrompt(exam, ders, count, optCount, zorluk, gorsel, visualType = 'auto', startIndex = 0, referenceText = '') {
   const optLabels = optCount === '5' ? 'A, B, C, D, E' : 'A, B, C, D';
-  const guide = DIFF_GUIDE[zorluk] || DIFF_GUIDE['Orta'];
-  const gorselUygun = VISUAL_FRIENDLY_DERSLER.has(ders);
+  const tarz = zorluk === 'Yeni Nesil' || zorluk === 'ÖSYM Tarzı' ? 'Yeni Nesil Beceri Temelli' : 'Standart Kazanım Odaklı';
 
-  const visualSchema = `
-GÖRSEL ŞEMASI (visual_type alanına göre visual_data'yı DOLDUR):
-- "none": visual_data: {}
-- "table": visual_data: { "headers": ["Sütun1","Sütun2"], "rows": [["a","b"],["c","d"]] }
-- "bar_chart": visual_data: { "labels": ["Ocak","Şubat"], "datasets": [{ "label": "Seri Adı", "data": [10, 20] }] }
-- "line_chart": visual_data: { "labels": ["t1","t2","t3"], "datasets": [{ "label": "Seri Adı", "data": [1,2,3] }] }
-- "geometry": visual_data: {
-    "shape": "triangle" | "rectangle" | "circle" | "coordinate",
-    "points": [ { "id": "A", "x": 0, "y": 0, "label": "A" }, { "id": "B", "x": 4, "y": 0, "label": "B" }, ... ],
-    "segments": [ ["A","B"], ["B","C"] ],
-    "circle": { "centerId": "O", "radius": 3 },
-    "measurements": [ { "type": "length", "from": "A", "to": "B", "value": "6 cm" }, { "type": "angle", "at": "B", "value": "90°" } ]
+  const optionsTemplate = optCount === '5'
+    ? `{ "A": "A seçeneği metni", "B": "B seçeneği metni", "C": "C seçeneği metni", "D": "D seçeneği metni", "E": "E seçeneği metni" }`
+    : `{ "A": "A seçeneği metni", "B": "B seçeneği metni", "C": "C seçeneği metni", "D": "D seçeneği metni" }`;
+
+  const topics = KAZANIM_MAP[ders] || [];
+  const selectedTopics = [];
+  if (topics.length > 0) {
+    const shuffled = [...topics].sort(() => 0.5 - Math.random());
+    selectedTopics.push(...shuffled.slice(0, Math.min(5, shuffled.length)));
   }
-  (x,y koordinatlarını basit tam sayılarla ver, şeklin orantısı gerçekçi olsun.)`;
+  const topicHint = selectedTopics.length > 0 ? `Lütfen şu kazanımlarla ilgili veya benzer müfredat konularından sorular üretin: ${selectedTopics.join(', ')}` : '';
 
-  const gorselKurali = gorsel && gorselUygun
-    ? `- Bu ders görselleştirmeye uygun. Sorularının EN AZ %40'ında visual_type'ı "none" DIŞINDA bir değer yap (uygun olanı: table/bar_chart/line_chart/geometry) ve soruyu o görsele dayandır.`
-    : gorsel
-      ? `- Görsel destek açık ama bu ders çoğunlukla metinsel; sadece gerçekten anlamlı olduğunda (ör. tablo/kronoloji) görsel kullan, zorlama.`
-      : `- Görsel destek kapalı; tüm sorularda visual_type: "none" kullan.`;
+  const allowedVisuals = gorsel
+    ? (visualType === 'auto' ? '"bar_chart", "line_chart", "pie_chart", "image", "table", "geometry"' : `"${visualType}"`)
+    : '"none"';
 
-  return `Türkiye'deki resmi ${exam} sınavı için uzman bir soru komisyonu üyesisin (MEB/ÖSYM standartlarına hakim, deneyimli bir öğretmensin).
-Görev: ${ders} bölümü için ${count} adet ÖZGÜN soru hazırlaman gerekiyor.
+  const visualInstructions = gorsel
+    ? `ÖNEMLİ: Ürettiğin her soru için mutlaka visual_type alanını [${allowedVisuals}] listesinden uygun bir değer olarak seçmeli ve ilgili visual_data verilerini doldurmalısın. "none" değerini kesinlikle KULLANMA. Her sorunun mutlaka bir görseli veya çizimi olmalıdır.
+1. Geometri soruları için visual_type: "geometry" seçmeli ve visual_data parametrelerini şu biçimde doldurmalısın:
+{
+  "shape_type": "triangle" | "circle" | "rectangle" | "cylinder" | "coordinate" | "angle",
+  "title": "Şekil Başlığı",
+  "caption": "Şekil altı açıklaması",
+  "params": {
+    // "triangle" için: angle_a, angle_b, angle_c, side_ab (sol kenar), side_bc (alt kenar), side_ac (sağ kenar), label_a, label_b, label_c
+    // "circle" için: radius_val (örn: "r" veya "5 cm"), angle_sector (sektör derecesi örn: "60"), label_o (varsayılan "O")
+    // "rectangle" için: width_val (örn: "12 cm"), height_val (örn: "5 cm"), label_a, label_b, label_c, label_d (varsayılan: A, B, C, D)
+    // "cylinder" için: radius_val (örn: "r" veya "3 cm"), height_val (örn: "h" veya "10 cm")
+    // "angle" için: angle_val (örn: "45°" veya "x"), label_o, label_a, label_b
+    // "coordinate" için: points (dizi: [{"x":2,"y":3,"label":"A"}]), lines (dizi: [{"from":[2,3],"to":[-1,4]}])
+  }
+}
+2. Fen bilgisi, Türkçe veya sosyal bilgiler gibi derslerde resim, fotoğraf veya çizim gerektiren sorular için visual_type: "image" seçmeli ve visual_data parametrelerini şu biçimde doldurmalısın:
+{
+  "title": "Görsel Başlığı",
+  "caption": "Görsel altı açıklaması",
+  "prompt": "Görselin içeriğini net ve detaylı İngilizce tanımlayan prompt. Sınav kitapçığına uygun olması için siyah-beyaz çizim veya ders kitabı illüstrasyonu stilinde olmalıdır. Örn: 'A simple black and white line art vector diagram of a flower showing its parts with labels, clean white background, science textbook style'"
+}
+3. Grafikler ("bar_chart", "line_chart", "pie_chart") için visual_data: labels, datasets (renksiz veya siyah/mor tonlarında), title, caption değerlerini; tablolar ("table") için visual_data: headers ve rows değerlerini dön.`
+    : `Bu bölüm için görsel kullanılmayacak, visual_type: "none" olarak dön.`;
 
-ZORLUK SEVİYESİ: ${zorluk}
-${guide.rule}
+  const referenceInstruction = referenceText
+    ? `Aşağıdaki referans soru/metin örneklerini kullanarak benzer tarzda ama özgün yeni sorular üret. Referansları doğrudan kopyalama; sadece stil, dil, zorluk ve soru yapısı için ilham al. Bu referanslar birincil kaynak olarak kullanılmalı ve soru üretiminin temelini oluşturmalıdır. Referans metin: ${referenceText.slice(0, 4000)}`
+    : '';
 
-GENEL KURALLAR:
+  let lgsExtraInstructions = '';
+  if (exam === 'LGS') {
+    lgsExtraInstructions = `
+=========================================
+LGS (Liselere Giriş Sınavı) ÖZEL YÖNERGELERİ:
+- Sorular LGS 2025 formatına, MEB örnek sorularına ve kazanım kavrama testlerine %100 uyumlu olmalıdır.
+- Soru Tarzı: Tamamen "Yeni Nesil" ve "Beceri Temelli" olmalıdır. Basit ezber veya tek aşamalı düz sorular YAZMA.
+- Sayısal (Matematik & Fen Bilimleri) için:
+  * Her soru mutlaka günlük yaşamdan bir senaryo, görsel modelleme, deney düzeneği veya şema üzerine kurulmalıdır.
+  * Sorunun metni ile visual_data altındaki görsel verisi (geometrik çizim parametreleri, tablo değerleri veya Imagen promptu) birbirine mantıksal olarak tam uyumlu olmalıdır. Soruda geçen "silindir şeklindeki kutu", "ABCD karesi", "birinci kap", "fotosentez hızı grafiği" gibi tüm detaylar görsel parametrelerinde tam olarak karşılık bulmalı ve gösterilmelidir.
+  * Matematik sorularında rasyonel sayılar, üslü/köklü ifadeler, çarpanlar ve katlar, cebirsel ifadeler gibi konularda işlem kalabalığı yerine akıl yürütme, analiz ve problem çözme ön planda olmalıdır.
+- Sözel (Türkçe, İnkılap Tarihi, İngilizce, Din Kültürü) için:
+  * Türkçe sorularında sözel mantık, infografik yorumlama, görsel okuma, paragraftan anlam çıkarma ve tablo analizi içeren görsel ağırlıklı yeni nesil sorular hazırlamalısın.
+  * İnkılap Tarihi ve İngilizce sorularında harita okuma, poster/broşür analizi, konuşma balonları veya anket tabloları içeren soru tiplerini tercih etmelisin.
+- Dil ve Anlatım: Ortaokul 8. sınıf öğrencisinin net bir şekilde anlayabileceği, gereksiz akademik terimlerden arındırılmış, açık, akıcı ve MEB kitapları diline tam uyumlu bir Türkçe kullanmalısın.
+=========================================`;
+  }
+
+  return `Türkiye'deki resmi ${exam} sınavı için uzman bir komisyonsun.
+Görev: ${ders} bölümü için ${count} adet ÖZGÜN soru hazırlaman gerekiyor. Bu sorular, sınavın ${startIndex + 1}. sorusundan ${startIndex + count}. sorusuna kadar olan kısmı temsil edecektir.
+
+STANDARTLAR:
+- Sınav: ${exam}
 - Bölüm: ${ders}
 - Soru Sayısı: ${count}
 - Seçenekler: ${optLabels}
-- Sorular bilimsel/matematiksel açıdan %100 doğru olmalı; çözümü elle/hesap makinesiyle doğrulanabilir olmalı.
-- Aynı deneme içinde soruları birbirinin kopyası yapma; her biri farklı bir kazanımı veya farklı bir senaryoyu kullansın.
-- Her yanlış şık (distractor) RASTGELE olmamalı; öğrencinin yapabileceği SPESİFİK bir hesap/kavram hatasını yansıtmalı. Bu hatayı "misconceptions" alanında kısaca açıkla.
-${gorselKurali}
-${visualSchema}
+- Zorluk: ${tarz}
+- Hatasızlık: Sorular bilimsel açıdan %100 doğru olmalı.
+- Konular: ${topicHint}
+- Görsel türü: ${allowedVisuals}
+- ${visualInstructions}
+- ${referenceInstruction ? referenceInstruction : 'Referans soru verilmedi; müfredat ve kazanım temelli özgün sorular üret.'}
+${lgsExtraInstructions}
 
-MUTLAKA SADECE JSON DÖNDÜR, başka hiçbir metin ekleme:
+JSON ŞEMA:
 {
   "questions": [
     {
-      "id": ${Date.now()},
+      "id": 1,
       "kazanim": "Müfredat kazanımı",
-      "visual_type": "none | table | bar_chart | line_chart | geometry",
+      "visual_type": "none",
       "visual_data": {},
       "text": "Soru metni...",
-      "options": { "A": "...", "B": "...", "C": "...", "D": "..." },
-      "answer": "A",
-      "solution": "Adım adım çözüm (zorluk seviyesine uygun adım sayısında)...",
-      "misconceptions": { "B": "Bu şık neden cazip bir yanlış: ...", "C": "...", "D": "..." }
+      "options": ${optionsTemplate},
+      "answer": "${optCount === '5' ? 'E' : 'D'}",
+      "solution": "Adım adım çözüm..."
     }
   ]
 }`;
 }
 
-// ─── GEMINI API (v1 Endpoint) ───
-async function callGemini(apiKey, prompt) {
-  let lastErr = null;
-  for (const modelObj of GEMINI_MODELS) {
-    const model = modelObj.name;
-    const ver = modelObj.ver;
-    try {
-      const res = await fetch(
-        `https://generativelanguage.googleapis.com/${ver}/models/${model}:generateContent?key=${apiKey}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: { temperature: 0.85, maxOutputTokens: 8192 },
-          }),
-        }
-      );
-      if (!res.ok) {
-        const errJson = await res.json();
-        const apiMsg = errJson.error?.message || `HTTP ${res.status}`;
-        const reason = errJson.error?.status || 'Unknown';
+function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
 
-        lastErr = new Error(`[${model}] ${apiMsg} (Status: ${reason})`);
-        console.warn(`Model denemesi başarısız: ${lastErr.message}`);
+// ─── API MANAGEMENT & CALLS ───
+async function getAvailableModels(apiKey) {
+  try {
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
+    if (!res.ok) throw new Error();
+    const data = await res.json();
+    const list = data.models || [];
+    
+    const filtered = list
+      .map(m => m.name.replace('models/', ''))
+      .filter(name => name.includes('gemini'))
+      .map(name => {
+        let ver = 'v1beta';
+        if (name.includes('gemini-1.0') || name.includes('gemini-1.5-flash-8b')) ver = 'v1';
+        return { name, ver };
+      });
+    
+    return filtered.length > 0 ? filtered : GEMINI_MODELS;
+  } catch (err) {
+    return GEMINI_MODELS;
+  }
+}
 
-        if (apiMsg.includes('API key not valid') || apiMsg.includes('invalid')) {
-          throw lastErr;
-        }
-        continue;
-      }
-      const data = await res.json();
-      const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (!text) {
-        lastErr = new Error(`${model}: Boş yanıt döndü.`);
-        continue;
-      }
-      return text;
-    } catch (e) {
-      console.error(`Fetch hatası (${model}):`, e);
-      lastErr = e;
-      continue;
+async function callGemini(apiKey, prompt, referenceImages = []) {
+  let modelsList = GEMINI_MODELS;
+  try {
+    modelsList = await getAvailableModels(apiKey);
+  } catch (e) {}
+  
+  const modelsToTry = [];
+  if (state.activeModelObj) {
+    modelsToTry.push(state.activeModelObj);
+  }
+  for (const m of modelsList) {
+    if (!state.activeModelObj || m.name !== state.activeModelObj.name || m.ver !== state.activeModelObj.ver) {
+      modelsToTry.push(m);
     }
   }
-  throw new Error(`Üretim Başarısız: ${lastErr?.message || 'Bilinmeyen hata'}`);
+
+  const errors = [];
+  for (const modelObj of modelsToTry) {
+    const model = modelObj.name;
+    const ver = modelObj.ver;
+    let attempts = 0;
+    const maxAttempts = 3;
+    let modelErr = null;
+    
+    while (attempts < maxAttempts) {
+      try {
+        const res = await fetch(
+          `https://generativelanguage.googleapis.com/${ver}/models/${model}:generateContent?key=${apiKey}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{ 
+                parts: [
+                  { text: prompt },
+                  ...(referenceImages || []).map(img => ({
+                    inlineData: {
+                      mimeType: img.mimeType,
+                      data: img.data
+                    }
+                  }))
+                ] 
+              }],
+              generationConfig: { 
+                temperature: 0.7, 
+                max_output_tokens: 8192,
+                response_mime_type: "application/json" 
+              },
+            }),
+          }
+        );
+        
+        if (res.status === 429) {
+          attempts++;
+          const waitTime = attempts * 3000;
+          modelErr = new Error(`[${model} (${ver})] Hız sınırı aşıldı (429 Rate Limit)`);
+          await sleep(waitTime);
+          continue;
+        }
+        
+        if (!res.ok) {
+          const errJson = await res.json();
+          const apiMsg = errJson.error?.message || `HTTP ${res.status}`;
+          modelErr = new Error(`[${model} (${ver})] ${apiMsg}`);
+          if (apiMsg.includes('API key not valid') || apiMsg.includes('invalid')) {
+            throw modelErr; 
+          }
+          break;
+        }
+        
+        const data = await res.json();
+        const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (!text) {
+          modelErr = new Error(`[${model} (${ver})] Boş yanıt döndü.`);
+          break;
+        }
+        
+        if (!state.activeModelObj || state.activeModelObj.name !== model || state.activeModelObj.ver !== ver) {
+          state.activeModelObj = { name: model, ver: ver };
+          localStorage.setItem('soruai_active_model', JSON.stringify(state.activeModelObj));
+        }
+        
+        return text;
+      } catch (e) {
+        modelErr = e;
+        break;
+      }
+    }
+    if (modelErr) {
+      errors.push(modelErr.message);
+    }
+  }
+  throw new Error("Üretim Başarısız. Denenen modellerin hata raporu:\n" + errors.map((err, i) => `${i+1}. ${err}`).join('\n'));
 }
 
 async function testApiStatus() {
   const apiKey = document.getElementById('apiKey').value.trim() || localStorage.getItem('soruai_key');
   if (!apiKey) { showToast('⚠️ Önce API anahtarını girin', 'warn'); return; }
-
+  
   showToast('🔍 API Test ediliyor...');
   try {
     const res = await callGemini(apiKey, "Sadece 'BAĞLANTI TAMAM' yaz.");
@@ -388,6 +560,153 @@ async function testApiStatus() {
     showError('✅ API Testi Başarılı: ' + res);
   } catch (err) {
     showError('❌ Test Sırasında Hata: ' + err.message);
+  }
+}
+
+async function callImagen(apiKey, prompt) {
+  try {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          instances: [
+            { prompt: prompt }
+          ],
+          parameters: {
+            sampleCount: 1,
+            aspectRatio: "1:1",
+            outputMimeType: "image/jpeg"
+          }
+        })
+      }
+    );
+    
+    if (!res.ok) {
+      const errJson = await res.json().catch(() => ({}));
+      const errMsg = errJson.error?.message || `HTTP ${res.status}`;
+      throw new Error(`Imagen 3 üretimi başarısız: ${errMsg}`);
+    }
+    
+    const data = await res.json();
+    const base64Bytes = data.predictions?.[0]?.bytesBase64Encoded;
+    if (!base64Bytes) {
+      throw new Error("API'den resim verisi (base64) dönmedi.");
+    }
+    
+    return `data:image/jpeg;base64,${base64Bytes}`;
+  } catch (err) {
+    console.error("callImagen Hatası:", err);
+    throw err;
+  }
+}
+
+// ─── OCR & REFERENCE FILES PROCESSING ───
+async function processReferenceFiles(files) {
+  const parts = [];
+  const referenceField = document.getElementById('referenceText');
+  state.referenceImages = [];
+
+  for (const file of files) {
+    const name = file.name.toLowerCase();
+    try {
+      if (name.endsWith('.txt') || name.endsWith('.md')) {
+        const text = await file.text();
+        if (text.trim()) parts.push(`Dosya: ${file.name}\n${text.trim()}`);
+      } else if (name.endsWith('.pdf')) {
+        const pdfText = await extractPdfText(file);
+        if (pdfText) parts.push(`PDF: ${file.name}\n${pdfText}`);
+      } else if (name.match(/\.(png|jpg|jpeg|webp)$/)) {
+        const base64Url = await readFileAsBase64(file);
+        const urlParts = base64Url.split(';base64,');
+        const mimeType = urlParts[0].split(':')[1];
+        const data = urlParts[1];
+        
+        state.referenceImages.push({
+          id: 'ref_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
+          name: file.name,
+          mimeType: mimeType,
+          data: data,
+          url: base64Url
+        });
+
+        const ocrText = await extractImageText(file);
+        if (ocrText) parts.push(`Fotoğraf Metni (${file.name}):\n${ocrText}`);
+      }
+    } catch (err) {
+      console.warn('Referans dosya işlenemedi:', file.name, err);
+    }
+  }
+
+  const combined = parts.join('\n\n').trim();
+  if (referenceField && combined) {
+    referenceField.value = combined;
+  }
+  
+  renderReferenceFilesList();
+  return combined;
+}
+
+function renderReferenceFilesList() {
+  const listEl = document.getElementById('referenceFilesList');
+  if (!listEl) return;
+  
+  if (!state.referenceImages || state.referenceImages.length === 0) {
+    listEl.innerHTML = '';
+    return;
+  }
+  
+  listEl.innerHTML = state.referenceImages.map((img) => `
+    <div class="ref-image-chip" style="position: relative; display: flex; align-items: center; gap: 8px; background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; padding: 6px 12px; font-size: 12px; backdrop-filter: blur(4px);">
+      <img src="${img.url}" style="width: 24px; height: 24px; object-fit: cover; border-radius: 4px; border: 1px solid var(--border2);" />
+      <span style="max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escHtml(img.name)}</span>
+      <button type="button" onclick="deleteReferenceImage('${img.id}')" style="background: none; border: none; color: var(--red); cursor: pointer; font-size: 11px; margin-left: 4px; padding: 2px;">❌</button>
+    </div>
+  `).join('');
+}
+
+function deleteReferenceImage(id) {
+  state.referenceImages = state.referenceImages.filter(img => img.id !== id);
+  renderReferenceFilesList();
+  showToast('📌 Referans resim çıkarıldı.');
+}
+
+function readFileAsBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = error => reject(error);
+    reader.readAsDataURL(file);
+  });
+}
+
+async function extractPdfText(file) {
+  if (typeof pdfjsLib === 'undefined') return '';
+  try {
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    const arrayBuffer = await file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+    let text = '';
+    for (let i = 1; i <= pdf.numPages; i += 1) {
+      const page = await pdf.getPage(i);
+      const content = await page.getTextContent();
+      const pageText = content.items.map(item => item.str).join(' ');
+      text += `\n[Sayfa ${i}] ${pageText}`;
+    }
+    return text.trim();
+  } catch (err) {
+    return '';
+  }
+}
+
+async function extractImageText(file) {
+  if (typeof Tesseract === 'undefined') return '';
+  try {
+    const result = await Tesseract.recognize(file, 'turkish');
+    return result?.data?.text?.trim() || '';
+  } catch (err) {
+    return '';
   }
 }
 
@@ -475,40 +794,113 @@ function renderVisual(q, containerId, idx) {
   const container = document.getElementById(containerId);
   const vt = q.visual_type;
   const vd = q.visual_data || {};
+  const title = vd.title || 'Görsel';
+  const caption = vd.caption || '';
 
   if (vt === 'table' && vd.headers && vd.rows) {
-    container.innerHTML = `<table class="vis-table"><thead><tr>${vd.headers.map(h => `<th>${escHtml(h)}</th>`).join('')}</tr></thead><tbody>${vd.rows.map(r => `<tr>${r.map(c => `<td>${escHtml(String(c))}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+    container.innerHTML = `
+      <div class="vis-card" style="border: 1px solid var(--border); border-radius: 8px; padding: 12px; background: rgba(255,255,255,0.01); margin-top: 12px;">
+        <table class="vis-table">
+          <thead><tr>${vd.headers.map(h => `<th>${escHtml(h)}</th>`).join('')}</tr></thead>
+          <tbody>${vd.rows.map(r => `<tr>${r.map(c => `<td>${escHtml(String(c))}</td>`).join('')}</tr>`).join('')}</tbody>
+        </table>
+        ${caption ? `<div style="font-size:11px; color:var(--text3); margin-top:6px; text-align:center;">${escHtml(caption)}</div>` : ''}
+      </div>`;
     return;
   }
 
-  if ((vt === 'bar_chart' || vt === 'line_chart') && vd.labels && vd.datasets) {
-    container.innerHTML = `<div class="vis-chart-wrap"><canvas id="chart-${idx}"></canvas></div>`;
-    const ctx = document.getElementById(`chart-${idx}`).getContext('2d');
-    const palette = ['#6c63ff', '#a78bfa', '#38bdf8', '#34d399', '#f59e0b'];
-    const chart = new Chart(ctx, {
-      type: vt === 'bar_chart' ? 'bar' : 'line',
-      data: {
-        labels: vd.labels,
-        datasets: vd.datasets.map((ds, i) => ({
-          label: ds.label || `Seri ${i + 1}`,
-          data: ds.data,
-          backgroundColor: vt === 'bar_chart' ? palette[i % palette.length] : 'rgba(108,99,255,0.15)',
-          borderColor: palette[i % palette.length],
-          borderWidth: 2,
-          tension: 0.3,
-          fill: vt === 'line_chart'
-        }))
-      },
-      options: {
-        responsive: true,
-        plugins: { legend: { display: vd.datasets.length > 1, labels: { color: '#a0a0b8' } } },
-        scales: {
-          x: { ticks: { color: '#a0a0b8' }, grid: { color: 'rgba(255,255,255,0.05)' } },
-          y: { ticks: { color: '#a0a0b8' }, grid: { color: 'rgba(255,255,255,0.05)' } }
+  if ((vt === 'bar_chart' || vt === 'line_chart' || vt === 'pie_chart') && vd.labels && vd.datasets) {
+    container.innerHTML = `
+      <div class="vis-card" style="border: 1px solid var(--border); border-radius: 8px; padding: 12px; background: rgba(255,255,255,0.01); margin-top: 12px;">
+        <div class="vis-chart-wrap" style="position:relative; height:200px;"><canvas id="chart-${idx}"></canvas></div>
+        ${caption ? `<div style="font-size:11px; color:var(--text3); margin-top:6px; text-align:center;">${escHtml(caption)}</div>` : ''}
+      </div>`;
+      
+    setTimeout(() => {
+      const canvas = document.getElementById(`chart-${idx}`);
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      const palette = ['#6c63ff', '#a78bfa', '#38bdf8', '#34d399', '#f59e0b'];
+      const chart = new Chart(ctx, {
+        type: vt === 'bar_chart' ? 'bar' : (vt === 'pie_chart' ? 'pie' : 'line'),
+        data: {
+          labels: vd.labels,
+          datasets: vd.datasets.map((ds, i) => ({
+            label: ds.label || `Seri ${i + 1}`,
+            data: ds.data,
+            backgroundColor: vt === 'pie_chart' ? palette : (vt === 'bar_chart' ? palette[i % palette.length] : 'rgba(108,99,255,0.15)'),
+            borderColor: palette[i % palette.length],
+            borderWidth: 2,
+            tension: 0.3,
+            fill: vt === 'line_chart'
+          }))
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: vt === 'pie_chart' || vd.datasets.length > 1, labels: { color: '#a0a0b8' } } },
+          scales: vt === 'pie_chart' ? {} : {
+            x: { ticks: { color: '#a0a0b8' }, grid: { color: 'rgba(255,255,255,0.05)' } },
+            y: { ticks: { color: '#a0a0b8' }, grid: { color: 'rgba(255,255,255,0.05)' } }
+          }
+        }
+      });
+      state.charts.push(chart);
+    }, 50);
+    return;
+  }
+
+  if (vt === 'image' && vd) {
+    if (vd.url && (vd.url.startsWith('http') || vd.url.startsWith('data:'))) {
+      container.innerHTML = `
+        <div class="vis-card" style="border: 1px solid var(--border); border-radius: 8px; padding: 12px; background: rgba(255,255,255,0.01); margin-top: 12px; text-align:center;">
+          <img src="${escHtml(vd.url)}" alt="${escHtml(title)}" style="max-width:100%; border-radius:8px; max-height:280px; object-fit:contain; background:var(--bg2);" />
+          ${caption ? `<div style="font-size:11px; color:var(--text3); margin-top:6px;">${escHtml(caption)}</div>` : ''}
+        </div>`;
+    } else if (vd.prompt) {
+      const imgId = `img-${containerId}`;
+      const skeletonId = `skeleton-${containerId}`;
+      
+      container.innerHTML = `
+        <div class="vis-card" style="border: 1px solid var(--border); border-radius: 8px; padding: 12px; background: rgba(255,255,255,0.01); margin-top: 12px; text-align:center;">
+          <div id="${skeletonId}" style="width: 100%; height: 200px; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(255,255,255,0.02); border-radius: 8px; border: 1px dashed var(--border); margin-bottom: 8px;">
+            <div class="spinner" style="width: 28px; height: 28px; border-width: 2.5px; margin-bottom: 8px; border-top-color: var(--accent2);"></div>
+            <span style="font-size: 11px; color: var(--text2);">Imagen 3 Görseli Üretiliyor...</span>
+          </div>
+          <img id="${imgId}" class="hidden" alt="${escHtml(title)}" style="max-width:100%; border-radius:8px; max-height:280px; object-fit:contain; background:var(--bg2);" />
+          ${caption ? `<div style="font-size:11px; color:var(--text3); margin-top:6px;">${escHtml(caption)}</div>` : ''}
+        </div>`;
+        
+      const apiKey = document.getElementById('apiKey')?.value.trim() || localStorage.getItem('soruai_key');
+      if (apiKey) {
+        callImagen(apiKey, vd.prompt)
+          .then(base64Url => {
+            const imgEl = document.getElementById(imgId);
+            const skelEl = document.getElementById(skeletonId);
+            if (imgEl && skelEl) {
+              imgEl.src = base64Url;
+              imgEl.classList.remove('hidden');
+              skelEl.classList.add('hidden');
+            }
+            q.visual_data.url = base64Url;
+          })
+          .catch(err => {
+            console.error("Görsel yüklenirken hata:", err);
+            const skelEl = document.getElementById(skeletonId);
+            if (skelEl) {
+              skelEl.innerHTML = `
+                <span style="font-size: 20px; margin-bottom: 6px;">⚠️</span>
+                <span style="font-size: 11px; color: var(--red); text-align: center; padding: 0 10px; line-height: 1.4;">Görsel üretilemedi:<br/>${escHtml(err.message)}</span>
+              `;
+            }
+          });
+      } else {
+        const skelEl = document.getElementById(skeletonId);
+        if (skelEl) {
+          skelEl.innerHTML = `<span style="font-size: 11px; color: var(--yellow);">API Anahtarı eksik, görsel üretilemedi.</span>`;
         }
       }
-    });
-    state.charts.push(chart);
+    }
     return;
   }
 

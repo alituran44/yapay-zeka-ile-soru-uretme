@@ -7,6 +7,9 @@
   <link rel="stylesheet" href="style.css" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet"/>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- pdf.js and tesseract.js for ocr and reference files -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/4.1.1/tesseract.min.js"></script>
 </head>
 <body>
   <!-- HEADER -->
@@ -95,6 +98,28 @@
               </label>
               <span class="toggle-label">Uygun sorularda gerçek grafik/şekil üret (çubuk & çizgi grafiği, geometrik şekil, tablo)</span>
             </div>
+          </div>
+
+          <!-- GÖRSEL TÜRÜ -->
+          <div class="form-group">
+            <label class="form-label">Görsel Türü</label>
+            <select class="form-select" id="visualType">
+              <option value="auto">Otomatik (Grafik / Resim / Şema)</option>
+              <option value="bar_chart">Grafik - Sütun</option>
+              <option value="line_chart">Grafik - Çizgi</option>
+              <option value="pie_chart">Grafik - Pasta</option>
+              <option value="image">Resim / İllüstrasyon (Imagen 3)</option>
+              <option value="none">Görsel Yok</option>
+            </select>
+          </div>
+
+          <!-- REFERANS SORULAR -->
+          <div class="form-group">
+            <label class="form-label">📌 Referans Sorular / Metin</label>
+            <textarea id="referenceText" class="form-textarea" rows="6" placeholder="Örnek soru metinlerini buraya yapıştırın ya da PDF/fotoğraf ekleyin. Bunlara benzer, özgün yeni sorular üretilecektir." style="width: 100%; padding: 10px 14px; border-radius: var(--radius-sm); border: 1px solid var(--border2); background: var(--bg2); color: var(--text); font-size: 14px; font-family: inherit; outline: none; margin-bottom: 10px; resize: vertical;"></textarea>
+            <input type="file" id="referenceFiles" class="form-input" accept=".pdf,.png,.jpg,.jpeg,.webp,.txt,.md" multiple />
+            <div id="referenceFilesList" style="margin-top: 8px; display: flex; flex-wrap: wrap; gap: 8px;"></div>
+            <p class="form-hint">PDF, fotoğraf veya metin dosyası ekleyin. Eklenen içerik doğrudan yapay zeka analizine dahil edilir.</p>
           </div>
 
           <!-- API KEY -->
