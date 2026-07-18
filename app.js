@@ -2,6 +2,8 @@
 const GEMINI_MODELS = [
   { name: 'gemini-2.5-flash',       ver: 'v1beta' },
   { name: 'gemini-2.0-flash',       ver: 'v1beta' },
+  { name: 'gemini-1.5-flash',       ver: 'v1' },
+  { name: 'gemini-1.5-pro',         ver: 'v1' },
   { name: 'gemini-1.5-flash',       ver: 'v1beta' },
   { name: 'gemini-1.5-pro',         ver: 'v1beta' }
 ];
@@ -433,25 +435,23 @@ function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
 
 // ─── API MANAGEMENT & CALLS ───
 async function getAvailableModels(apiKey) {
-  try {
-    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
-    if (!res.ok) throw new Error();
-    const data = await res.json();
-    const list = data.models || [];
-    
-    const filtered = list
-      .map(m => m.name.replace('models/', ''))
-      .filter(name => name.includes('gemini'))
-      .map(name => {
-        let ver = 'v1beta';
-        if (name.includes('gemini-1.0') || name.includes('gemini-1.5-flash-8b')) ver = 'v1';
-        return { name, ver };
-      });
-    
-    return filtered.length > 0 ? filtered : GEMINI_MODELS;
-  } catch (err) {
-    return GEMINI_MODELS;
+  for (const ver of ['v1', 'v1beta']) {
+    try {
+      const res = await fetch(`https://generativelanguage.googleapis.com/${ver}/models?key=${apiKey}`);
+      if (!res.ok) continue;
+      const data = await res.json();
+      const list = data.models || [];
+      if (list.length === 0) continue;
+      
+      const filtered = list
+        .map(m => m.name.replace('models/', ''))
+        .filter(name => name.includes('gemini'))
+        .map(name => ({ name, ver }));
+        
+      if (filtered.length > 0) return filtered;
+    } catch (e) {}
   }
+  return GEMINI_MODELS;
 }
 
 async function callGemini(apiKey, prompt, referenceImages = []) {
