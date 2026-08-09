@@ -54,17 +54,37 @@
         <div class="form-panel glass-card">
           <h2 class="panel-title">📝 Deneme Sınavı Hazırla</h2>
 
-          <!-- SINAV SEÇİMİ -->
+          <!-- SINAV VEYA SINIF SEÇİMİ (ŞIK AÇILIR MENÜ) -->
           <div class="form-group">
-            <label class="form-label">Sınav Türü</label>
-            <div class="chip-grid" id="examChips">
-              <button class="chip active" data-value="TYT" onclick="selectChip(this,'exam')">TYT</button>
-              <button class="chip" data-value="AYT_SAY" onclick="selectChip(this,'exam')">AYT Sayısal</button>
-              <button class="chip" data-value="LGS" onclick="selectChip(this,'exam')">LGS</button>
-              <button class="chip" data-value="KPSS" onclick="selectChip(this,'exam')">KPSS</button>
-              <button class="chip" data-value="DGS" onclick="selectChip(this,'exam')">DGS</button>
-              <button class="chip" data-value="ALES" onclick="selectChip(this,'exam')">ALES</button>
-            </div>
+            <label class="form-label">🎓 Sınav veya Sınıf Seçimi</label>
+            <select id="examSelect" class="form-select" style="font-size:14px; font-weight:600; padding:12px 14px; background:var(--bg2); border-color:var(--accent); cursor:pointer;" onchange="onExamSelectChange(this.value)">
+              <optgroup label="🎓 YKS & Merkezi Sınavlar">
+                <option value="TYT" selected>TYT (Temel Yeterlilik Testi)</option>
+                <option value="AYT_SAY">AYT Sayısal (Mat, Fizik, Kimya, Biyoloji)</option>
+                <option value="AYT_SOZ">AYT Sözel (Edebiyat, Tarih 1-2, Coğ 1-2, Felsefe, Din)</option>
+                <option value="AYT_EA">AYT Eşit Ağırlık (Mat, Edebiyat, Tarih-1, Coğrafya-1)</option>
+                <option value="AYT_DIL">AYT Yabancı Dil / YDT (İngilizce)</option>
+                <option value="LGS">LGS (Liselere Giriş Sınavı)</option>
+                <option value="KPSS_LISANS">KPSS Lisans (GY / GK)</option>
+                <option value="KPSS_ONLISANS">KPSS Önlisans (GY / GK)</option>
+                <option value="KPSS_ORTAOGRETIM">KPSS Lise / Ortaöğretim (GY / GK)</option>
+                <option value="ALES">ALES (Akademik Personel Sınavı)</option>
+                <option value="DGS">DGS (Dikey Geçiş Sınavı)</option>
+              </optgroup>
+              <optgroup label="🏫 Ortaokul Ara Sınıflar">
+                <option value="GRADE_5">5. Sınıf ✨ (Türkiye Yüzyılı Maarif Modeli)</option>
+                <option value="GRADE_6">6. Sınıf ✨ (Türkiye Yüzyılı Maarif Modeli)</option>
+                <option value="GRADE_7">7. Sınıf ✨ (Türkiye Yüzyılı Maarif Modeli)</option>
+                <option value="GRADE_8">8. Sınıf 📘 (Klasik MEB / LGS)</option>
+              </optgroup>
+              <optgroup label="🎒 Lise Ara Sınıflar">
+                <option value="GRADE_HAZIRLIK">Lise Hazırlık ✨ (Türkiye Yüzyılı Maarif Modeli)</option>
+                <option value="GRADE_9">9. Sınıf ✨ (Türkiye Yüzyılı Maarif Modeli)</option>
+                <option value="GRADE_10">10. Sınıf ✨ (Türkiye Yüzyılı Maarif Modeli)</option>
+                <option value="GRADE_11">11. Sınıf ✨ (Türkiye Yüzyılı Maarif Modeli)</option>
+                <option value="GRADE_12">12. Sınıf 🎓 (Klasik ÖSYM / YKS)</option>
+              </optgroup>
+            </select>
           </div>
 
           <!-- SEÇENEK SAYISI -->
@@ -81,11 +101,11 @@
             <label class="form-label">Soru Zorluğu</label>
             <div class="chip-grid" id="diffChips">
               <button class="chip chip-easy" data-value="Kolay" onclick="selectChip(this,'diff')">🟢 Kolay</button>
-              <button class="chip chip-med active" data-value="Orta" onclick="selectChip(this,'diff')">🟡 Orta</button>
+              <button class="chip chip-med" data-value="Orta" onclick="selectChip(this,'diff')">🟡 Orta</button>
               <button class="chip chip-hard" data-value="Zor" onclick="selectChip(this,'diff')">🔴 Zor</button>
-              <button class="chip chip-osym" data-value="Yeni Nesil" onclick="selectChip(this,'diff')">⚡ Yeni Nesil / Beceri Temelli</button>
+              <button class="chip chip-osym active" data-value="Yeni Nesil" onclick="selectChip(this,'diff')">⚡ Yeni Nesil / Beceri Temelli</button>
             </div>
-            <p class="diff-hint" id="diffHint">Orta: iki kavramın birleştiği, kısa senaryolu, tek adımda çözülemeyen sorular.</p>
+            <p class="diff-hint" id="diffHint">Yeni Nesil: ÖSYM ve MEB LGS/TYT/AYT formatında, üst düzey okuma/görsel/grafik analizi gerektiren, %100 beceri temelli soru.</p>
           </div>
 
           <!-- GÖRSEL -->
@@ -122,12 +142,25 @@
             <p class="form-hint">PDF, fotoğraf veya metin dosyası ekleyin. Eklenen içerik doğrudan yapay zeka analizine dahil edilir.</p>
           </div>
 
+          <!-- MODEL PREFERENCE -->
+          <div class="form-group">
+            <label class="form-label">🤖 AI Model Tercihi (200+ Model Desteği)</label>
+            <select class="form-select" id="modelPreference">
+              <option value="auto">🎯 Otomatik Akıllı Model (Ders/Konu Odaklı - En Uygun Yapay Zeka)</option>
+              <option value="deepseek">🧠 DeepSeek R1 / V4 (Derin Mantık & Sayısal Akıl Yürütme)</option>
+              <option value="claude">✒️ Claude 3.5 / Sonnet (Türkçe & Zengin Sözel Anlatım)</option>
+              <option value="openai">⚡ OpenAI GPT-4o / GPT-5 (Standart & Güçlü Performans)</option>
+              <option value="gemini">🚀 Google Gemini 2.5 / 3.5 (Hızlı & Görsel Destekli)</option>
+            </select>
+            <p class="form-hint">Dersin türüne (Matematik, Türkçe vb.) göre en yüksek başarısı olan yapay zeka otomatik devreye girer.</p>
+          </div>
+
           <!-- API KEY -->
           <div class="form-group">
-            <label class="form-label">🔑 Gemini API Anahtarı</label>
+            <label class="form-label">🔑 OmniRoute / AI API Anahtarı</label>
             <div class="api-group">
               <div class="api-input-wrapper">
-                <input type="password" class="form-input" id="apiKey" placeholder="AIzaSy..." />
+                <input type="password" class="form-input" id="apiKey" placeholder="sk-or-... veya omni-... veya AIzaSy..." />
                 <button class="btn-toggle" onclick="togglePass('apiKey')">👁️</button>
               </div>
               <button class="btn-save-key" onclick="saveKey()">Kaydet</button>
@@ -147,7 +180,7 @@
           <p class="form-hint" style="margin-top:15px; color:var(--text3); font-size:12px;">
             * Deneme sınavı resmi soru sayılarına göre bölümler halinde üretilecektir. Bu işlem 1-2 dakika sürebilir.
           </p>
-          <p id="versionTag" style="color:var(--text3); font-size:10px; text-align:center; margin-top:20px;">SoruAI Sürüm: v2.0 (Görsel + Zorluk Güncellemesi)</p>
+          <p id="versionTag" style="color:var(--text3); font-size:10px; text-align:center; margin-top:20px;">SoruAI Sürüm: v3.1 (Görsel + Zorluk Güncellemesi)</p>
         </div>
 
         <!-- RIGHT: OUTPUT -->
@@ -181,17 +214,25 @@
       <div class="settings-card glass-card">
         <h2>⚙️ Ayarlar</h2>
         <div class="form-group">
-          <label class="form-label">Gemini API Anahtarı</label>
+          <label class="form-label">API Anahtarı (OmniRoute / Gemini / NVIDIA)</label>
           <div class="api-input-row">
-            <input type="password" class="form-input" id="apiKeySettings" placeholder="AIzaSy..." />
+            <input type="password" class="form-input" id="apiKeySettings" placeholder="sk-or-... veya AIzaSy..." />
             <button class="btn-save-key" onclick="saveKeyFromSettings()">Kaydet</button>
           </div>
-          <p class="form-hint"><a href="https://aistudio.google.com/app/apikey" target="_blank">Google AI Studio</a>'dan ücretsiz alın</p>
+          <p class="form-hint">OmniRoute, Google Gemini veya NVIDIA API anahtarınızı girebilirsiniz.</p>
+        </div>
+        <div class="form-group">
+          <label class="form-label">🌐 OmniRoute API Base URL (İsteğe Bağlı)</label>
+          <div class="api-input-row">
+            <input type="text" class="form-input" id="omnirouteUrl" placeholder="http://3.84.244.225:20128/v1" />
+            <button class="btn-save-key" onclick="saveOmniRouteUrl()">Kaydet</button>
+          </div>
+          <p class="form-hint">Varsayılan: <code>http://3.84.244.225:20128/v1</code></p>
         </div>
         <div class="form-group">
           <label class="form-label">Varsayılan Zorluk</label>
           <select class="form-select" id="defaultDiff">
-            <option>Kolay</option><option selected>Orta</option><option>Zor</option><option>Yeni Nesil</option>
+            <option>Kolay</option><option>Orta</option><option>Zor</option><option selected>Yeni Nesil</option>
           </select>
         </div>
         <div class="settings-info">
@@ -206,6 +247,6 @@
     <p>SoruAI © 2025 · Türkiye Sınav Sistemi (ÖSYM · MEB) · Yapay Zeka Destekli</p>
   </footer>
 
-  <script src="app.js"></script>
+  <script src="app.js?v=15.0"></script>
 </body>
 </html>
